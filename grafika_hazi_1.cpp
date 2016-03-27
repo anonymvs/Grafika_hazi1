@@ -148,7 +148,6 @@ public:
 	operator float*() { return &m[0][0]; }
 };
 
-
 // 3D point in homogeneous coordinates
 struct vec4 {
 	float v[4];
@@ -167,13 +166,51 @@ struct vec4 {
 	}
 };
 
+
+struct vec2 {
+	float x,y;
+
+	vec2() {}
+
+	vec2(float argx, float argy) {
+		x = argx;
+		y = argy;
+	}
+
+	vec2 operator+(const vec2 arg) {
+		this->x += arg.x;
+		this->y += arg.y;
+		return *this;
+	}
+	vec2 operator-(const vec2 arg) {
+		this->x -= arg.x;
+		this->y -= arg.y;
+		return *this;
+	}
+	vec2 operator/(const float arg) {
+		this->x = this->x / arg;
+		this->y = this->y / arg;
+		return *this;
+	}
+	vec2 operator*(const float arg) {
+		this->x = this->x * arg;
+		this->y = this->y * arg;
+		return *this;
+	}
+	vec2& operator=(const vec2 arg) {
+		this->x = arg.x;
+		this->y = arg.y;
+		return *this;
+	}
+};
+
 // 2D camera
 struct Camera {
 	float wCx, wCy;	// center in world coordinates
 	float wWx, wWy;	// width and height in world coordinates
 public:
 	Camera() {
-		Animate(0);
+		Animate(0, 0, 0);
 	}
 
 	mat4 V() { // view matrix: translates the center to the origin
@@ -204,12 +241,16 @@ public:
 			0, 0, 0, 1);
 	}
 
-	void Animate(float t) {
+	void Animate(float t, float starX, float starY) {
 		wCx = 0; // 10 * cosf(t);
 		wCy = 0;
 		wWx = 40;
 		wWy = 40;
 
+		if(starX != 0 && starY  != 0) {
+			wCx = starX;
+			wCy = starY;
+		}
 		//printf("wCx: %f\t wCy: %f\t", wCx, wCy);
 		//printf("wWx: %f\t wWy: %f\n", wWx, wWy);
 	}
@@ -220,6 +261,196 @@ Camera camera;
 
 // handle of the shader program
 unsigned int shaderProgram;
+
+class LineStrip {
+	GLuint vao, vbo;        // vertex array object, vertex buffer object
+	float  vertexData[500000]; // interleaved data of coordinates and colors
+	int    nVertices;       // number of vertices
+public:
+	LineStrip() {
+		nVertices = 0;
+	}
+	void Create() {
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// Enable the vertex attribute arrays
+		glEnableVertexAttribArray(0);  // attribute array 0
+		glEnableVertexAttribArray(1);  // attribute array 1
+									   // Map attribute array 0 to the vertex data of the interleaved vbo
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(0)); // attribute array, components/attribute, component type, normalize?, stride, offset
+																										// Map attribute array 1 to the color data of the interleaved vbo
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
+	}
+
+	void AddPoint(float cX, float cY) {
+		//if (nVertices >= 20) return;
+
+
+		// fill interleaved data
+		vertexData[5 * nVertices] = cX;
+		vertexData[5 * nVertices + 1] = cY;
+		vertexData[5 * nVertices + 2] = 1; // red
+		vertexData[5 * nVertices + 3] = 1; // green
+		vertexData[5 * nVertices + 4] = 0; // blue
+		nVertices++;
+
+		// copy data to the GPU
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, nVertices * 5 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
+	}
+
+	int getVertexCount() {
+		return nVertices;
+	}
+
+	void removeAll() {
+		nVertices = 0;
+
+	}
+
+	void Draw() {
+		if (nVertices > 2) {
+			mat4 VPTransform = camera.V() * camera.P();
+
+			int location = glGetUniformLocation(shaderProgram, "MVP");
+			if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, VPTransform);
+			else printf("uniform MVP cannot be set\n");
+
+			glBindVertexArray(vao);
+			glDrawArrays(GL_LINE_STRIP, 0, nVertices);
+		}
+	}
+};
+
+class ControlPoint {
+	vec2 pos; //position
+	float t; //time
+	vec2 vv; //velocity vector
+public:
+	ControlPoint() {
+
+	}
+
+	ControlPoint(float argt, float x, float y) {
+		pos = vec2(x, y);
+		t = argt;
+		vv = vec2(0,0);
+	}
+
+	vec2 getPos() {
+		return pos;
+	}
+
+	float getT() {
+		return t;
+	}
+
+	vec2 getVV() {
+		return vv;
+	}
+
+	void setT(float arg) {
+		t = arg;
+	}
+
+	void setPos(vec2 v) {
+		pos = v;
+	}
+
+	void setVV(vec2 vv) {
+		this->vv = vv;
+	}
+
+	ControlPoint& operator=(ControlPoint arg) {
+		this->pos = arg.getPos();
+		this->t = arg.getT();
+		this->vv = arg.getVV();
+		return *this;
+	}
+
+};
+
+class CatmullRom {
+	ControlPoint cps[20]; //contorl points
+	int n;
+public:
+	CatmullRom() {
+		n = 0;
+	}
+
+	void add(float t, float argx, float argy, LineStrip &l) {
+
+		vec4 wVertex = vec4(argx, argy, 0, 1) * camera.Pinv() * camera.Vinv();
+
+		float x = wVertex.v[0];
+		float y = wVertex.v[1];
+
+		ControlPoint cp = ControlPoint(t, x, y);
+		cps[n] = cp;
+		//printf("\nx: %f\t, y: %f\t", cps[n].getPos().x, cps[n].getPos().y);
+		for (int i = 1; i < n-1; i++) {
+			cps[i].setVV(( ( (cps[i+1].getPos() - cps[i].getPos()) /
+											 (cps[i+1].getT() - cps[i].getT()) )
+											  								+
+										 ( (cps[i].getPos() - cps[i-1].getPos()) /
+									 	 (cps[i].getT() - cps[i-1].getT()) ) )
+										 								* 0.9f);
+		}
+
+		cps[0].setVV(( ( (cps[0+1].getPos() - cps[0].getPos()) / (cps[0+1].getT() - cps[0].getT()) ) + ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) ) * 0.9f);
+
+		cps[n].setVV(( ( (cps[0].getPos() - cps[n].getPos()) / (cps[n].getT()+0.5 - cps[n].getT()) ) + ( (cps[n].getPos() - cps[n-1].getPos()) / (cps[n].getT() - cps[n-1].getT()) ) ) * 0.9f);
+
+		cps[n+1] = cps[0];
+		cps[n+1].setT(t + 0.5);
+
+		l.removeAll();
+		float dt = 0.025;
+		if(n <= 1) {
+			l.AddPoint(x, y);
+		} else {
+			for(float i = cps[0].getT(); i <= cps[n+1].getT(); i += dt ) {
+				vec2 h = r(i);
+				l.AddPoint(h.x, h.y);
+				printf("x: %f\t, y: %f\n", h.x, h.y);
+			}
+		}
+		n++;
+	}
+
+	vec2 hermite(float t, ControlPoint cV, ControlPoint nV) {
+		vec2 a0 = cV.getPos();
+		vec2 a1 = cV.getVV();
+		vec2 a2 = (((nV.getPos() - cV.getPos())*3) / powf((nV.getT() - cV.getT()), 2.0)) - ((nV.getVV() + (cV.getVV() * 2)) / (nV.getT() - cV.getT()));
+		vec2 a3 = (((cV.getPos() - nV.getPos())*2) / powf((nV.getT() - cV.getT()), 3.0)) + ((nV.getVV() + cV.getVV()) / powf((nV.getT() - cV.getT()), 2.0));
+
+		vec2 coord = a3 * powf((t - cV.getT()), 3.0) + a2 * powf((t - cV.getT()), 2.0) + a1 * (t - cV.getT()) + a0;
+
+		return coord;
+	}
+
+	vec2 r(float t) {
+		for(int i = 0; i <= n+1; i++) {
+			if( cps[i].getT() <= t && t <= cps[i+1].getT() ) {
+				vec2 h = hermite(t, cps[i], cps[i+1]);
+				return h;
+			}
+		}
+		//return vec2(0,0);
+	}
+
+	ControlPoint* getCps() {
+		return cps;
+	}
+
+	int getSize() {
+		return n;
+	}
+
+};
 
 //gravitational acceleration, frictional variable
 const float grav = 0.001f; //gravitational force
@@ -235,7 +466,7 @@ class Star {
 	//float acceleration;
 public:
 	Star() {
-		Animate(0, NULL);
+		Animate(0, NULL, NULL);
 		//mass = 50;
 	}
 
@@ -323,7 +554,15 @@ public:
 		return coordArray;
 	}
 
-	void Animate(float t, Star* mStar) {
+	void Animate(float t, Star* mStar, CatmullRom* c) {
+		if (c != NULL) {
+			int n = c->getSize();
+			if(n >= 3) {
+				float modt = fmodf(t, c->getCps()[n].getT() - c->getCps()[0].getT()) + c->getCps()[0].getT();
+				wTx = c->r(modt).x;
+				wTy = c->r(modt).y;
+			}
+		}
 		// float r;
 		// float gravF;
 		// float fricF;
@@ -367,8 +606,6 @@ public:
 		sx = 1.0f + 0.2f * cosf(t);
 		sy = 1.0f + 0.2f * cosf(t);
 
-
-
 		//printf("sx: %f\t sy: %f\t", sx, sy);
 		//printf("wTx: %f\t wtY: %f\n", wTx, wTy);
 		if (t == 0) {
@@ -395,206 +632,6 @@ public:
 
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
 		glDrawArrays(GL_TRIANGLE_FAN, 0, 16);	// draw a single triangle with vertices defined in vao
-	}
-};
-
-
-
-class LineStrip {
-	GLuint vao, vbo;        // vertex array object, vertex buffer object
-	float  vertexData[500000]; // interleaved data of coordinates and colors
-	int    nVertices;       // number of vertices
-public:
-	LineStrip() {
-		nVertices = 0;
-	}
-	void Create() {
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// Enable the vertex attribute arrays
-		glEnableVertexAttribArray(0);  // attribute array 0
-		glEnableVertexAttribArray(1);  // attribute array 1
-									   // Map attribute array 0 to the vertex data of the interleaved vbo
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(0)); // attribute array, components/attribute, component type, normalize?, stride, offset
-																										// Map attribute array 1 to the color data of the interleaved vbo
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
-	}
-
-	void AddPoint(float cX, float cY) {
-		//if (nVertices >= 20) return;
-
-		vec4 wVertex = vec4(cX, cY, 0, 1) * camera.Pinv() * camera.Vinv();
-		// fill interleaved data
-		vertexData[5 * nVertices] = wVertex.v[0];
-		vertexData[5 * nVertices + 1] = wVertex.v[1];
-		vertexData[5 * nVertices + 2] = 1; // red
-		vertexData[5 * nVertices + 3] = 1; // green
-		vertexData[5 * nVertices + 4] = 0; // blue
-		nVertices++;
-
-		// copy data to the GPU
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, nVertices * 500 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
-	}
-
-	int getVertexCount() {
-		return nVertices;
-	}
-
-	void removeAll() {
-		nVertices = 0;
-		for(int i = 0; i < 500; i++) {
-			vertexData[i] = 0;
-		}
-	}
-
-	void Draw() {
-		if (nVertices > 2) {
-			printf("%d ", nVertices);
-			mat4 VPTransform = camera.V() * camera.P();
-
-			int location = glGetUniformLocation(shaderProgram, "MVP");
-			if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, VPTransform);
-			else printf("uniform MVP cannot be set\n");
-
-			glBindVertexArray(vao);
-			glDrawArrays(GL_LINE_STRIP, 0, nVertices*1000);
-		}
-	}
-};
-
-struct vec2 {
-	float x,y;
-
-	vec2() {}
-
-	vec2(float argx, float argy) {
-		x = argx;
-		y = argy;
-	}
-
-	vec2 operator+(const vec2 arg) {
-		this->x += arg.x;
-		this->y += arg.y;
-		return *this;
-	}
-	vec2 operator-(const vec2 arg) {
-		this->x -= arg.x;
-		this->y -= arg.y;
-		return *this;
-	}
-	vec2 operator/(const float arg) {
-		this->x = this->x / arg;
-		this->y = this->y / arg;
-		return *this;
-	}
-	vec2 operator*(const float arg) {
-		this->x = this->x * arg;
-		this->y = this->y * arg;
-		return *this;
-	}
-
-};
-
-class ControlPoint {
-	vec2 pos; //position
-	float t; //time
-	vec2 vv; //velocity vector
-public:
-	ControlPoint() {
-
-	}
-
-	ControlPoint(float argt, float x, float y) {
-		pos = vec2(x, y);
-		t = argt;
-		vv = vec2(0,0);
-	}
-
-	vec2 getPos() {
-		return pos;
-	}
-
-	float getT() {
-		return t;
-	}
-
-	vec2 getVV() {
-		return vv;
-	}
-
-	void setPos(vec2 v) {
-		pos = v;
-	}
-
-	void setVV(vec2 vv) {
-		this->vv = vv;
-	}
-
-};
-
-
-class CatmullRom {
-	ControlPoint cps[20]; //contorl points
-	int n;
-public:
-	CatmullRom() {
-		n = 0;
-	}
-
-	void add(float t, float x, float y, LineStrip &l) {
-		ControlPoint cp = ControlPoint(t, x, y);
-		cps[n] = cp;
-		printf("\nx: %f\t, y: %f\t", cps[n].getPos().x, cps[n].getPos().y);
-		for (int i = 1; i < n-1; i++) {
-			cps[i].setVV(( ( (cps[i+1].getPos() - cps[i].getPos()) / (cps[i+1].getT() - cps[i].getT()) ) + ( (cps[i].getPos() - cps[i-1].getPos()) / (cps[i].getT() - cps[i-1].getT()) ) ) * 1.0f/2.0f);
-		}
-
-
-		cps[0].setVV(( ( (cps[0+1].getPos() - cps[0].getPos()) / (cps[0+1].getT() - cps[0].getT()) ) + ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) ) * 1.0f/2.0f);
-
-		cps[n].setVV(( ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) + ( (cps[n].getPos() - cps[n-1].getPos()) / (cps[n].getT() - cps[n-1].getT()) ) ) * 1.0f/2.0f);
-
-		l.removeAll();
-		float dt = 0.025;
-		if(n <= 2) {
-			l.AddPoint(x, y);
-		} else {
-			for(float i = cps[0].getT(); i < cps[n].getT(); i += dt ) {
-				vec2 h = r(i);
-				l.AddPoint(h.x, h.y);
-				//printf("x: %f\t, y: %f\n", r(i).x, r(i).y);
-			}
-		}
-		n++;
-	}
-
-	vec2 hermite(float t, ControlPoint cV, ControlPoint nV) {
-		vec2 a0 = cV.getPos();
-		vec2 a1 = cV.getVV();
-		vec2 a2 = (((nV.getPos() - cV.getPos())*3) / powf((nV.getT() - cV.getT()), 2.0)) - ((nV.getVV() + cV.getVV() * 2) / (nV.getT() - cV.getT()));
-		vec2 a3 = (((nV.getPos() - cV.getPos())*2) / powf((nV.getT() - cV.getT()), 3.0)) - ((nV.getVV() + cV.getVV()) / powf((nV.getT() - cV.getT()), 2.0));
-		// printf("\nx: %f\t, y: %f\t", a0.x, a0.y);
-		// printf("x: %f\t, y: %f\t", a1.x, a1.y);
-		// printf("x: %f\t, y: %f\t", a2.x, a2.y);
-		// printf("x: %f\t, y: %f\t", a3.x, a3.y);
-		vec2 coord = a3 * powf((t - cV.getT()), 3.0) + a2 * powf((t - cV.getT()), 2.0) + a1 * (t - cV.getT()) + a0;
-		//printf("x: %f\t, y: %f\n", coord.x, coord.y);
-		return coord;
-	}
-
-	vec2 r(float t) {
-		for(int i = 0; i < n; i++) {
-			if( t >= cps[i].getT() && t <= cps[i+1].getT() ) {
-				vec2 h = hermite(t, cps[i], cps[i+1]);
-				//printf("x: %f\t, y: %f\n", h.x, h.y);
-				return h;
-			}
-		}
-		return vec2(0,0);
 	}
 };
 
@@ -681,7 +718,13 @@ void onDisplay() {
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	long time = glutGet(GLUT_ELAPSED_TIME);
+	float sec = time / 1000.0f;
+	if (key == ' ') {
+		camera.Animate(sec, mainStar.getwTx(), mainStar.getwTy());
+	}
+
+	glutPostRedisplay();         // if d, invalidate display, i.e. redraw
 }
 
 // Key of ASCII code released
@@ -709,10 +752,10 @@ void onMouseMotion(int pX, int pY) {
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float sec = time / 1000.0f;				// convert msec to sec
-	camera.Animate(sec);					// animate the camera
-	mainStar.Animate(sec, NULL);					// animate the triangle object
-	star2.Animate(sec, &mainStar);
-	star3.Animate(sec, &mainStar);
+	mainStar.Animate(sec, NULL, &cmr);					// animate the triangle object
+	//camera.Animate(sec, 0, 0);					// animate the camera
+	star2.Animate(sec, &mainStar, NULL);
+	star3.Animate(sec, &mainStar, NULL);
 	glutPostRedisplay();					// redraw the scene
 }
 
