@@ -481,6 +481,7 @@ struct vec2 {
 	vec2 operator*(const float arg) {
 		this->x = this->x * arg;
 		this->y = this->y * arg;
+		return *this;
 	}
 
 };
@@ -488,7 +489,7 @@ struct vec2 {
 class ControlPoint {
 	vec2 pos; //position
 	float t; //time
-	float vv; //velocity vector
+	vec2 vv; //velocity vector
 public:
 	ControlPoint() {
 
@@ -497,7 +498,6 @@ public:
 	ControlPoint(float argt, float x, float y) {
 		pos = vec2(x, y);
 		t = argt;
-		vv = 0;
 	}
 
 	vec2 getPos() {
@@ -508,7 +508,7 @@ public:
 		return t;
 	}
 
-	float getVV() {
+	vec2 getVV() {
 		return vv;
 	}
 
@@ -516,7 +516,7 @@ public:
 		pos = v;
 	}
 
-	void setVV(float vv) {
+	void setVV(vec2 vv) {
 		this->vv = vv;
 	}
 
@@ -526,6 +526,9 @@ public:
 class CatmullRom {
 	ControlPoint cps[20]; //contorl points
 	int n;
+
+
+
 public:
 	CatmullRom() {
 		n = 0;
@@ -533,15 +536,29 @@ public:
 
 	void add(float t, float x, float y) {
 		ControlPoint cp = ControlPoint(t, x, y);
-		cps[n + 1] = cp;
 		vec2 v =( ( (cps[n+1].getPos() - cps[n].getPos()) / (cps[n+1].getT() - cps[n].getT()) ) + ( (cps[n].getPos() - cps[n-1].getPos()) / (cps[n].getT() - cps[n-1].getT()) ) ) * 1.0f/2.0f ;
+		cp.setVV(v);
+		cps[n + 1] = cp;
 		n++;
 	}
 
-	void hermite(vec2 currentV, vec2 nextV) {
+	vec2 hermite(float t, ControlPoint cV, ControlPoint nV) {
+		vec2 a0 = cV.getPos();
+		vec2 a1 = cV.getVV();
+		vec2 a2 = (((nV.getPos() - cV.getPos())*3) / powf((nV.getT() - cV.getT()), 2.0)) - ((nV.getVV() + cV.getVV() * 2) / (nV.getT() - cV.getT()));
+		vec2 a3 = (((nV.getPos() - cV.getPos())*2) / powf((nV.getT() - cV.getT()), 3.0)) - ((nV.getVV() + cV.getVV()) / powf((nV.getT() - cV.getT()), 2.0));
 
+		vec2 coord = a3 * powf((t - cV.getT()), 3.0) + a2 * powf((t - cV.getT()), 2.0) + a1 * (t - cV.getT()) + a0;
+		return coord;
 	}
 
+	vec2 r(float t) {
+		for(int i = 0; i < n; i++) {
+			if( t >= cps[i].getT() && t <= cps[i].getT() ) {
+				return hermite(t, cps[i], cps[i+1]);
+			}
+		}
+	}
 
 };
 
