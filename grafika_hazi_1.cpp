@@ -19,7 +19,7 @@
 //
 // NYILATKOZAT
 // ---------------------------------------------------------------------------------------------
-// Nev    : Hegedüs Dániel
+// Nev    : Hegedues Daniel
 // Neptun : YBY8BK
 // ---------------------------------------------------------------------------------------------
 // ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
@@ -178,24 +178,28 @@ struct vec2 {
 	}
 
 	vec2 operator+(const vec2 arg) {
-		this->x += arg.x;
-		this->y += arg.y;
-		return *this;
+		vec2 v;
+		v.x = this->x + arg.x;
+		v.y = this->y + arg.y;
+		return v;
 	}
 	vec2 operator-(const vec2 arg) {
-		this->x -= arg.x;
-		this->y -= arg.y;
-		return *this;
+		vec2 v;
+		v.x = this->x - arg.x;
+		v.y = this->y - arg.y;
+		return v;
 	}
 	vec2 operator/(const float arg) {
-		this->x = this->x / arg;
-		this->y = this->y / arg;
-		return *this;
+		vec2 v;
+		v.x = this->x / arg;
+		v.y = this->y / arg;
+		return v;
 	}
 	vec2 operator*(const float arg) {
-		this->x = this->x * arg;
-		this->y = this->y * arg;
-		return *this;
+		vec2 v;
+		v.x = this->x * arg;
+		v.y = this->y * arg;
+		return v;
 	}
 	vec2& operator=(const vec2 arg) {
 		this->x = arg.x;
@@ -208,9 +212,11 @@ struct vec2 {
 struct Camera {
 	float wCx, wCy;	// center in world coordinates
 	float wWx, wWy;	// width and height in world coordinates
+	bool star;
 public:
 	Camera() {
 		Animate(0, 0, 0);
+		star = false;
 	}
 
 	mat4 V() { // view matrix: translates the center to the origin
@@ -241,18 +247,24 @@ public:
 			0, 0, 0, 1);
 	}
 
+	void toggleStar(bool b) {
+		star = b;
+	}
+
+	bool getStarState() {
+		return star;
+	}
+
 	void Animate(float t, float starX, float starY) {
-		wCx = 0; // 10 * cosf(t);
-		wCy = 0;
 		wWx = 40;
 		wWy = 40;
-
-		if(starX != 0 && starY  != 0) {
+		if(star) {
 			wCx = starX;
 			wCy = starY;
+		} else {
+			wCx = 0; // 10 * cosf(t);
+			wCy = 0;
 		}
-		//printf("wCx: %f\t wCy: %f\t", wCx, wCy);
-		//printf("wWx: %f\t wWy: %f\n", wWx, wWy);
 	}
 };
 
@@ -286,9 +298,6 @@ public:
 	}
 
 	void AddPoint(float cX, float cY) {
-		//if (nVertices >= 20) return;
-
-
 		// fill interleaved data
 		vertexData[5 * nVertices] = cX;
 		vertexData[5 * nVertices + 1] = cY;
@@ -308,7 +317,6 @@ public:
 
 	void removeAll() {
 		nVertices = 0;
-
 	}
 
 	void Draw() {
@@ -326,13 +334,11 @@ public:
 };
 
 class ControlPoint {
-	vec2 pos; //position
-	float t; //time
-	vec2 vv; //velocity vector
+	vec2 pos;
+	float t;
+	vec2 vv;
 public:
-	ControlPoint() {
-
-	}
+	ControlPoint() {}
 
 	ControlPoint(float argt, float x, float y) {
 		pos = vec2(x, y);
@@ -374,7 +380,7 @@ public:
 };
 
 class CatmullRom {
-	ControlPoint cps[20]; //contorl points
+	ControlPoint cps[20];
 	int n;
 public:
 	CatmullRom() {
@@ -382,7 +388,6 @@ public:
 	}
 
 	void add(float t, float argx, float argy, LineStrip &l) {
-
 		vec4 wVertex = vec4(argx, argy, 0, 1) * camera.Pinv() * camera.Vinv();
 
 		float x = wVertex.v[0];
@@ -390,7 +395,7 @@ public:
 
 		ControlPoint cp = ControlPoint(t, x, y);
 		cps[n] = cp;
-		//printf("\nx: %f\t, y: %f\t", cps[n].getPos().x, cps[n].getPos().y);
+
 		for (int i = 1; i < n-1; i++) {
 			cps[i].setVV(( ( (cps[i+1].getPos() - cps[i].getPos()) /
 											 (cps[i+1].getT() - cps[i].getT()) )
@@ -415,7 +420,6 @@ public:
 			for(float i = cps[0].getT(); i <= cps[n+1].getT(); i += dt ) {
 				vec2 h = r(i);
 				l.AddPoint(h.x, h.y);
-				printf("x: %f\t, y: %f\n", h.x, h.y);
 			}
 		}
 		n++;
@@ -439,7 +443,7 @@ public:
 				return h;
 			}
 		}
-		//return vec2(0,0);
+		return vec2(0,0);
 	}
 
 	ControlPoint* getCps() {
@@ -449,25 +453,21 @@ public:
 	int getSize() {
 		return n;
 	}
-
 };
 
-//gravitational acceleration, frictional variable
-const float grav = 0.001f; //gravitational force
-const float mu = 0.003f; //frictional variable
+const float grav = 0.03f;
+const float mu = 0.007f;
 
 class Star {
 	unsigned int vao;	// vertex array object id
-	float sx, sy;		// scaling
-	float wTx, wTy;		// translation
+	float sx, sy;
+	float wTx, wTy;
 	float rad;
-	//float mass;
-	//float velocity;
-	//float acceleration;
+	vec2 v;
 public:
 	Star() {
 		Animate(0, NULL, NULL);
-		//mass = 50;
+		v = vec2(0,0);
 	}
 
 	float getwTx() { return wTx; }
@@ -558,56 +558,36 @@ public:
 		if (c != NULL) {
 			int n = c->getSize();
 			if(n >= 3) {
-				float modt = fmodf(t, c->getCps()[n].getT() - c->getCps()[0].getT()) + c->getCps()[0].getT();
+				float modt = fmodf(t/10, c->getCps()[n].getT() - c->getCps()[0].getT()) + c->getCps()[0].getT();
 				wTx = c->r(modt).x;
 				wTy = c->r(modt).y;
 			}
 		}
-		// float r;
-		// float gravF;
-		// float fricF;
-		//printf("rx: %f\t", (mStar->getwTx() - wTx) );
+		float r;
+		float gravF;
 		if (mStar != NULL) {
-
-			// r = sqrtf(((mStar->getwTx() - wTx) * (mStar->getwTx() - wTx)) + ((mStar->getwTy() - wTy) * (mStar->getwTy() - wTy)));
-			// //r = 10;
-			// if (r == 0) {
-			// 	gravF = 0;
-			// 	fricF = 0;
-			// }
-			// else {
-			// 	gravF = (grav * 2 * mass) / (r*r);
-			// 	fricF = mass * grav * mu;
-			// }
-			//
-			//
-			// float sumF = gravF - fricF;
+			r = sqrtf(((mStar->getwTx() - wTx) * (mStar->getwTx() - wTx)) + ((mStar->getwTy() - wTy) * (mStar->getwTy() - wTy)));
+			if (fabsf(r) <= 0.5) {
+				gravF = 0;
+			}
+			else {
+				gravF = grav / (r*r);
+			}
 
 			float vecX = mStar->getwTx() - wTx;
 			float vecY = mStar->getwTy() - wTy;
-
-			//printf("vecX: %f = %f - %f \tvecY: %f = %f -%f\t", vecX, mStar->getwTx(), wTx, vecY, mStar->getwTy(), wTy );
-
-			// float alpha = atanf((vecY / vecX));
-			// float a = sumF * mass;
-			// float ax = cosf(alpha) * a;
-			// float ay = sinf(alpha) * a;
-			//
-			// wTx = wTx + (1 / 2) * ax * t * t;
-			// wTy = wTy + (1 / 2) * ay * t * t;
-
-			//printf("wTx: %f \t", wTx);
-			//printf("wTy: %f \n", wTy);
-
-			wTx = wTx + vecX * grav;
-			wTy = wTy + vecY * grav;
+			vec2 vec = vec2(vecX / r, vecY / r);
+			vec2 acceleration = vec * gravF;
+			vec2 fricV = v * (-mu);
+			acceleration = acceleration + fricV;
+			v = v + acceleration;
+			wTx = wTx + v.x;
+			wTy = wTy + v.y;
 		}
 
 		sx = 1.0f + 0.2f * cosf(t);
 		sy = 1.0f + 0.2f * cosf(t);
 
-		//printf("sx: %f\t sy: %f\t", sx, sy);
-		//printf("wTx: %f\t wtY: %f\n", wTx, wTy);
 		if (t == 0) {
 			rad = 0;
 			wTx = 1 * wTx;
@@ -647,13 +627,9 @@ void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
-	/*
-	float array[8] = { -8, -8, -6, 10, 8, -2, -10, -10 };
-	float array2[42] = {};
-	*/
-	mainStar.Create(-10, 10, 1, 1, 0, 0);
-	star2.Create(-8, -8, 1, 0, 1, 0);
-	star3.Create(6, -9, 1, 0, 0, 1);
+	mainStar.Create(-10, 10, 1, 212.0f/255.0f, 1.0f, 0.0f);
+	star2.Create(    -8, -8, 1, 179.0f/255.0f, 149.0f/255.0f, 0.0f/255.0f);
+	star3.Create(     6, -9, 1, 179.0f/255.0f, 149.0f/255.0f, 0.0f/255.0f);
 	lineStrip.Create();
 
 	// Create vertex shader from string
@@ -718,10 +694,12 @@ void onDisplay() {
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	long time = glutGet(GLUT_ELAPSED_TIME);
-	float sec = time / 1000.0f;
 	if (key == ' ') {
-		camera.Animate(sec, mainStar.getwTx(), mainStar.getwTy());
+		if(camera.getStarState()) {
+			camera.toggleStar(false);
+		} else {
+			camera.toggleStar(true);
+		}
 	}
 
 	glutPostRedisplay();         // if d, invalidate display, i.e. redraw
@@ -753,7 +731,7 @@ void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float sec = time / 1000.0f;				// convert msec to sec
 	mainStar.Animate(sec, NULL, &cmr);					// animate the triangle object
-	//camera.Animate(sec, 0, 0);					// animate the camera
+	camera.Animate(sec, mainStar.getwTx(), mainStar.getwTy());					// animate the camera
 	star2.Animate(sec, &mainStar, NULL);
 	star3.Animate(sec, &mainStar, NULL);
 	glutPostRedisplay();					// redraw the scene
