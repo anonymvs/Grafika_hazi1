@@ -402,7 +402,7 @@ public:
 
 class LineStrip {
 	GLuint vao, vbo;        // vertex array object, vertex buffer object
-	float  vertexData[100]; // interleaved data of coordinates and colors
+	float  vertexData[500]; // interleaved data of coordinates and colors
 	int    nVertices;       // number of vertices
 public:
 	LineStrip() {
@@ -437,6 +437,13 @@ public:
 		// copy data to the GPU
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		glBufferData(GL_ARRAY_BUFFER, nVertices * 5 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
+	}
+
+	void removeAll() {
+		nVertices = 0;
+		for(int i = 0; i < 500; i++) {
+			vertexData[i] = 0;
+		}
 	}
 
 	void Draw() {
@@ -498,6 +505,7 @@ public:
 	ControlPoint(float argt, float x, float y) {
 		pos = vec2(x, y);
 		t = argt;
+		vv = vec2(0,0);
 	}
 
 	vec2 getPos() {
@@ -526,20 +534,30 @@ public:
 class CatmullRom {
 	ControlPoint cps[20]; //contorl points
 	int n;
-
-
-
 public:
 	CatmullRom() {
 		n = 0;
 	}
 
-	void add(float t, float x, float y) {
+	void add(float t, float x, float y, LineStrip &l) {
 		ControlPoint cp = ControlPoint(t, x, y);
-		vec2 v =( ( (cps[n+1].getPos() - cps[n].getPos()) / (cps[n+1].getT() - cps[n].getT()) ) + ( (cps[n].getPos() - cps[n-1].getPos()) / (cps[n].getT() - cps[n-1].getT()) ) ) * 1.0f/2.0f ;
-		cp.setVV(v);
-		cps[n + 1] = cp;
 		n++;
+		cps[n] = cp;
+
+		for (int i = 1; i < n-1; i++) {
+			cps[i].setVV(( ( (cps[i+1].getPos() - cps[i].getPos()) / (cps[i+1].getT() - cps[i].getT()) ) + ( (cps[i].getPos() - cps[i-1].getPos()) / (cps[i].getT() - cps[i-1].getT()) ) ) * 1.0f/2.0f);
+		}
+
+		cps[0].setVV(( ( (cps[0+1].getPos() - cps[0].getPos()) / (cps[0+1].getT() - cps[0].getT()) ) + ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) ) * 1.0f/2.0f);
+
+		cps[n].setVV(( ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) + ( (cps[n].getPos() - cps[n-1].getPos()) / (cps[n].getT() - cps[n-1].getT()) ) ) * 1.0f/2.0f);
+
+		l.removeAll();
+		float dt = 0.025;
+		for(float i = cps[0].getT(); i < cps[n].getT(); i += dt ) {
+			l.AddPoint(r(i).x, r(i).y);
+			//printf("x: %f\t, y: %f\n", r(i).x, r(i).y);
+		}
 	}
 
 	vec2 hermite(float t, ControlPoint cV, ControlPoint nV) {
@@ -549,23 +567,27 @@ public:
 		vec2 a3 = (((nV.getPos() - cV.getPos())*2) / powf((nV.getT() - cV.getT()), 3.0)) - ((nV.getVV() + cV.getVV()) / powf((nV.getT() - cV.getT()), 2.0));
 
 		vec2 coord = a3 * powf((t - cV.getT()), 3.0) + a2 * powf((t - cV.getT()), 2.0) + a1 * (t - cV.getT()) + a0;
+		printf("x: %f\t, y: %f\n", coord.x, coord.y);
 		return coord;
 	}
 
 	vec2 r(float t) {
 		for(int i = 0; i < n; i++) {
 			if( t >= cps[i].getT() && t <= cps[i].getT() ) {
-				return hermite(t, cps[i], cps[i+1]);
+				vec2 h = hermite(t, cps[i], cps[i+1]);
+				//printf("x: %f\t, y: %f\n", h.x, h.y);
+				return h;
 			}
 		}
+		return vec2(0,0);
 	}
-
 };
 
 // The virtual world: collection of two objects
 Star mainStar;
 Star star2;
 Star star3;
+CatmullRom cmr;
 LineStrip lineStrip;
 
 // Initialization, create an OpenGL context
@@ -654,10 +676,12 @@ void onKeyboardUp(unsigned char key, int pX, int pY) {
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
+	long time = glutGet(GLUT_ELAPSED_TIME);
+	float sec = time / 1000.0f;
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
 		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 		float cY = 1.0f - 2.0f * pY / windowHeight;
-		lineStrip.AddPoint(cX, cY);
+		cmr.add(cX, cY, sec, lineStrip);
 		glutPostRedisplay();     // redraw
 	}
 }
