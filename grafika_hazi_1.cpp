@@ -629,7 +629,7 @@ void onInitialization() {
 	// Create objects by setting up their vertex data on the GPU
 	mainStar.Create(-10, 10, 1, 212.0f/255.0f, 1.0f, 0.0f);
 	star2.Create(    -8, -8, 1, 179.0f/255.0f, 149.0f/255.0f, 0.0f/255.0f);
-	star3.Create(     6, -9, 1, 179.0f/255.0f, 149.0f/255.0f, 0.0f/255.0f);
+	star3.Create(     6, -9, 1, 178.0f/255.0f, 148.0f/255.0f, 0.1f/255.0f);
 	lineStrip.Create();
 
 	// Create vertex shader from string
