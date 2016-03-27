@@ -402,7 +402,7 @@ public:
 
 class LineStrip {
 	GLuint vao, vbo;        // vertex array object, vertex buffer object
-	float  vertexData[500]; // interleaved data of coordinates and colors
+	float  vertexData[500000]; // interleaved data of coordinates and colors
 	int    nVertices;       // number of vertices
 public:
 	LineStrip() {
@@ -424,7 +424,7 @@ public:
 	}
 
 	void AddPoint(float cX, float cY) {
-		if (nVertices >= 20) return;
+		//if (nVertices >= 20) return;
 
 		vec4 wVertex = vec4(cX, cY, 0, 1) * camera.Pinv() * camera.Vinv();
 		// fill interleaved data
@@ -434,9 +434,14 @@ public:
 		vertexData[5 * nVertices + 3] = 1; // green
 		vertexData[5 * nVertices + 4] = 0; // blue
 		nVertices++;
+
 		// copy data to the GPU
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, nVertices * 5 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, nVertices * 500 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
+	}
+
+	int getVertexCount() {
+		return nVertices;
 	}
 
 	void removeAll() {
@@ -447,7 +452,8 @@ public:
 	}
 
 	void Draw() {
-		if (nVertices > 0) {
+		if (nVertices > 2) {
+			printf("%d ", nVertices);
 			mat4 VPTransform = camera.V() * camera.P();
 
 			int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -455,7 +461,7 @@ public:
 			else printf("uniform MVP cannot be set\n");
 
 			glBindVertexArray(vao);
-			glDrawArrays(GL_LINE_STRIP, 0, nVertices);
+			glDrawArrays(GL_LINE_STRIP, 0, nVertices*1000);
 		}
 	}
 };
@@ -541,12 +547,12 @@ public:
 
 	void add(float t, float x, float y, LineStrip &l) {
 		ControlPoint cp = ControlPoint(t, x, y);
-		n++;
 		cps[n] = cp;
-
+		printf("\nx: %f\t, y: %f\t", cps[n].getPos().x, cps[n].getPos().y);
 		for (int i = 1; i < n-1; i++) {
 			cps[i].setVV(( ( (cps[i+1].getPos() - cps[i].getPos()) / (cps[i+1].getT() - cps[i].getT()) ) + ( (cps[i].getPos() - cps[i-1].getPos()) / (cps[i].getT() - cps[i-1].getT()) ) ) * 1.0f/2.0f);
 		}
+
 
 		cps[0].setVV(( ( (cps[0+1].getPos() - cps[0].getPos()) / (cps[0+1].getT() - cps[0].getT()) ) + ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) ) * 1.0f/2.0f);
 
@@ -554,10 +560,16 @@ public:
 
 		l.removeAll();
 		float dt = 0.025;
-		for(float i = cps[0].getT(); i < cps[n].getT(); i += dt ) {
-			l.AddPoint(r(i).x, r(i).y);
-			//printf("x: %f\t, y: %f\n", r(i).x, r(i).y);
+		if(n <= 2) {
+			l.AddPoint(x, y);
+		} else {
+			for(float i = cps[0].getT(); i < cps[n].getT(); i += dt ) {
+				vec2 h = r(i);
+				l.AddPoint(h.x, h.y);
+				//printf("x: %f\t, y: %f\n", r(i).x, r(i).y);
+			}
 		}
+		n++;
 	}
 
 	vec2 hermite(float t, ControlPoint cV, ControlPoint nV) {
@@ -565,15 +577,18 @@ public:
 		vec2 a1 = cV.getVV();
 		vec2 a2 = (((nV.getPos() - cV.getPos())*3) / powf((nV.getT() - cV.getT()), 2.0)) - ((nV.getVV() + cV.getVV() * 2) / (nV.getT() - cV.getT()));
 		vec2 a3 = (((nV.getPos() - cV.getPos())*2) / powf((nV.getT() - cV.getT()), 3.0)) - ((nV.getVV() + cV.getVV()) / powf((nV.getT() - cV.getT()), 2.0));
-
+		// printf("\nx: %f\t, y: %f\t", a0.x, a0.y);
+		// printf("x: %f\t, y: %f\t", a1.x, a1.y);
+		// printf("x: %f\t, y: %f\t", a2.x, a2.y);
+		// printf("x: %f\t, y: %f\t", a3.x, a3.y);
 		vec2 coord = a3 * powf((t - cV.getT()), 3.0) + a2 * powf((t - cV.getT()), 2.0) + a1 * (t - cV.getT()) + a0;
-		printf("x: %f\t, y: %f\n", coord.x, coord.y);
+		//printf("x: %f\t, y: %f\n", coord.x, coord.y);
 		return coord;
 	}
 
 	vec2 r(float t) {
 		for(int i = 0; i < n; i++) {
-			if( t >= cps[i].getT() && t <= cps[i].getT() ) {
+			if( t >= cps[i].getT() && t <= cps[i+1].getT() ) {
 				vec2 h = hermite(t, cps[i], cps[i+1]);
 				//printf("x: %f\t, y: %f\n", h.x, h.y);
 				return h;
@@ -681,7 +696,7 @@ void onMouse(int button, int state, int pX, int pY) {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
 		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 		float cY = 1.0f - 2.0f * pY / windowHeight;
-		cmr.add(cX, cY, sec, lineStrip);
+		cmr.add(sec, cX, cY, lineStrip);
 		glutPostRedisplay();     // redraw
 	}
 }
