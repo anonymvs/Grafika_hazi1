@@ -491,6 +491,8 @@ public:
 			vertexCoords[i] = coordArray[i];
 		}
 
+		delete coordArray;
+
 		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
 			sizeof(vertexCoords),  // number of the vbo in bytes
 			vertexCoords,		   // address of the data array on the CPU
