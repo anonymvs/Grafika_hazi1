@@ -93,7 +93,7 @@ void checkLinking(unsigned int program) {
 // vertex shader in GLSL
 const char *vertexSource = R"(
 	#version 130
-    precision highp float;
+	precision highp float;
 
 				uniform mat4 MVP;			// Model-View-Projection matrix in row-major format
 
@@ -110,7 +110,7 @@ const char *vertexSource = R"(
 // fragment shader in GLSL
 const char *fragmentSource = R"(
 	#version 130
-    precision highp float;
+	precision highp float;
 
 				in vec3 color;				// variable input: interpolated color of vertex shader
 	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
@@ -399,10 +399,10 @@ public:
 		for (int i = 1; i < n-1; i++) {
 			cps[i].setVV(( ( (cps[i+1].getPos() - cps[i].getPos()) /
 											 (cps[i+1].getT() - cps[i].getT()) )
-											  								+
+																			+
 										 ( (cps[i].getPos() - cps[i-1].getPos()) /
-									 	 (cps[i].getT() - cps[i-1].getT()) ) )
-										 								* 0.9f);
+										 (cps[i].getT() - cps[i-1].getT()) ) )
+																		* 0.9f);
 		}
 
 		cps[0].setVV(( ( (cps[0+1].getPos() - cps[0].getPos()) / (cps[0+1].getT() - cps[0].getT()) ) + ( (cps[0].getPos() - cps[n].getPos()) / (cps[0].getT() - cps[n].getT()) ) ) * 0.9f);
@@ -600,9 +600,9 @@ public:
 
 	void Draw() {
 
-		mat4 M(cosf(rad) + sx, sinf(rad), 0, 0,
-			-sinf(rad), cosf(rad) + sy, 0, 0,
-			0, 0, 1, 0,
+		mat4 M(cosf(rad) + sx,    sinf(rad),        0, 0,
+			   -sinf(rad),        cosf(rad) + sy,   0, 0,
+			   0, 0, 1, 0,
 			wTx, wTy, 0, 1); // model matrix
 
 		mat4 MVPTransform = M * camera.V() * camera.P();
